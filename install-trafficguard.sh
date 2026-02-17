@@ -7,10 +7,10 @@ TG_URL="https://raw.githubusercontent.com/dotX12/traffic-guard/master/install.sh
 LIST_GOV="https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/refs/heads/main/public/government_networks.list"
 LIST_SCAN="https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/refs/heads/main/public/antiscanner.list"
 
+MANAGER_PATH="/opt/trafficguard-manager.sh"
+LINK_PATH="/usr/local/bin/rknpidor"
 MANUAL_FILE="/opt/trafficguard-manual.list"
 EXCLUDE_FILE="/opt/trafficguard-exclude.list"
-LINK_PATH="/usr/local/bin/rknpidor"
-MANAGER_PATH="/opt/trafficguard-manager.sh"
 
 echo -e "${CYAN}🚀 TrafficGuard PRO Manager v16.4 запускается...${NC}"
 
@@ -69,19 +69,26 @@ uninstall_process() {
     systemctl stop antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null || true
     systemctl disable antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null || true
 
-    rm -f /usr/local/bin/traffic-guard /usr/local/bin/antiscan-aggregate-logs.sh
-    rm -f /etc/systemd/system/antiscan-* /etc/rsyslog.d/10-iptables-scanners.conf /etc/logrotate.d/iptables-scanners
-    rm -f "$LINK_PATH" "$MANAGER_PATH" "$MANUAL_FILE" "$EXCLUDE_FILE"
+    rm -f /usr/local/bin/traffic-guard
+    rm -f /usr/local/bin/antiscan-aggregate-logs.sh
+    rm -f /etc/systemd/system/antiscan-* 
+    rm -f /etc/rsyslog.d/10-iptables-scanners.conf
+    rm -f /etc/logrotate.d/iptables-scanners
 
-    iptables -D INPUT -j SCANNERS-BLOCK 2>/dev/null || true
-    iptables -F SCANNERS-BLOCK 2>/dev/null || true
-    iptables -X SCANNERS-BLOCK 2>/dev/null || true
-    ipset flush SCANNERS-BLOCK-V4 2>/dev/null || true
-    ipset destroy SCANNERS-BLOCK-V4 2>/dev/null || true
-    ipset flush SCANNERS-BLOCK-V6 2>/dev/null || true
-    ipset destroy SCANNERS-BLOCK-V6 2>/dev/null || true
+    rm -f /usr/local/bin/rknpidor
+    rm -f /opt/trafficguard-manager.sh
+    rm -f "$MANUAL_FILE" "$EXCLUDE_FILE"
 
-    echo -e "${GREEN}✅ TrafficGuard полностью удалён.${NC}"
+    iptables -D INPUT -j SCANNERS-BLOCK 2>/dev/null
+    iptables -F SCANNERS-BLOCK 2>/dev/null
+    iptables -X SCANNERS-BLOCK 2>/dev/null
+
+    ipset flush SCANNERS-BLOCK-V4 2>/dev/null
+    ipset destroy SCANNERS-BLOCK-V4 2>/dev/null
+    ipset flush SCANNERS-BLOCK-V6 2>/dev/null
+    ipset destroy SCANNERS-BLOCK-V6 2>/dev/null
+
+    echo -e "${GREEN}✅ Полностью удалено.${NC}"
     exit 0
 }
 
