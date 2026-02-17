@@ -2,7 +2,6 @@ rm -f /usr/local/bin/rknpidor /opt/trafficguard-manager.sh
 
 cat > /opt/trafficguard-manager.sh << 'EOF'
 #!/bin/bash
-set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
