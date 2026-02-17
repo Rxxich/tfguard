@@ -171,7 +171,7 @@ show_menu() {
         [[ -z "$PKTS_CNT" ]] && PKTS_CNT="0"
 
         printf "${CYAN}╔══════════════════════════════════════════════════════╗${NC}\n"
-        printf "${CYAN}║           🛡️  TRAFFICGUARD PRO MANAGER               ║${NC}\n"
+        printf "${CYAN}║           🛡️  TRAFFICGUARD PRO MANAGER              ║${NC}\n"
         printf "${CYAN}╠══════════════════════════════════════════════════════╣${NC}\n"
         printf "║  📊 Подсетей:       ${GREEN}%-36s${NC}║\n" "$IPSET_CNT"
         printf "║  🔥 Атак отбито:    ${RED}%-36s${NC}║\n" "$PKTS_CNT"
@@ -205,6 +205,7 @@ show_menu() {
         esac
     done
 }
+
 
 check_root
 
