@@ -1,5 +1,4 @@
 #!/bin/bash
-set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -12,6 +11,8 @@ MANUAL_FILE="/opt/trafficguard-manual.list"
 EXCLUDE_FILE="/opt/trafficguard-exclude.list"
 LINK_PATH="/usr/local/bin/rknpidor"
 MANAGER_PATH="/opt/trafficguard-manager.sh"
+
+echo -e "${CYAN}🚀 TrafficGuard PRO Manager v16.4 запускается...${NC}"
 
 check_root() {
     [[ $EUID -ne 0 ]] && { echo -e "${RED}Запуск только от root!${NC}"; exit 1; }
@@ -168,6 +169,7 @@ view_log() {
 }
 
 show_menu() {
+    echo -e "${CYAN}DEBUG: Входим в главное меню${NC}"
     trap 'exit 0' INT
     while true; do
         clear
@@ -176,7 +178,7 @@ show_menu() {
         PKTS_CNT=$(get_packets_count)
 
         printf "${CYAN}╔══════════════════════════════════════════════════════╗${NC}\n"
-        printf "${CYAN}║ 🛡️  TRAFFICGUARD PRO MANAGER v16.3                  ║${NC}\n"
+        printf "${CYAN}║ 🛡️  TRAFFICGUARD PRO MANAGER v16.4                  ║${NC}\n"
         printf "${CYAN}╠══════════════════════════════════════════════════════╣${NC}\n"
         printf "║ 📊 Заблокировано подсетей : ${GREEN}%-28s${NC}║\n" "$IPSET_CNT"
         printf "║ 🔥 Атак отбито            : ${RED}%-28s${NC}║\n" "$PKTS_CNT"
@@ -215,6 +217,7 @@ show_menu() {
 
 # ================== MAIN ==================
 check_root
+echo -e "${GREEN}DEBUG: check_root пройден, запускаем меню...${NC}"
 
 case "${1:-}" in
     install)   install_process ;;
