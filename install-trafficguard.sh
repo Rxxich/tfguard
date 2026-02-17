@@ -1,4 +1,16 @@
 #!/bin/bash
+# 🔥 TrafficGuard PRO INSTALLER v16.0 (Whitelist Edition)
+
+MANAGER_PATH="/opt/trafficguard-manager.sh"
+LINK_PATH="/usr/local/bin/rknpidor"
+MANUAL_FILE="/opt/trafficguard-manual.list"
+EXCLUDE_FILE="/opt/trafficguard-exclude.list"
+
+rm -f "$MANAGER_PATH" "$LINK_PATH"
+
+cat > "$MANAGER_PATH" << 'EOF'
+#!/bin/bash
+set -u
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -7,34 +19,22 @@ TG_URL="https://raw.githubusercontent.com/dotX12/traffic-guard/master/install.sh
 LIST_GOV="https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/refs/heads/main/public/government_networks.list"
 LIST_SCAN="https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/refs/heads/main/public/antiscanner.list"
 
-MANAGER_PATH="/opt/trafficguard-manager.sh"
-LINK_PATH="/usr/local/bin/rknpidor"
 MANUAL_FILE="/opt/trafficguard-manual.list"
 EXCLUDE_FILE="/opt/trafficguard-exclude.list"
-
-echo -e "${CYAN}🚀 TrafficGuard PRO Manager v16.4 запускается...${NC}"
 
 check_root() {
     [[ $EUID -ne 0 ]] && { echo -e "${RED}Запуск только от root!${NC}"; exit 1; }
 }
 
-get_ipset_count() {
-    command -v ipset >/dev/null 2>&1 || { echo 0; return; }
-    ipset list SCANNERS-BLOCK-V4 2>/dev/null | awk '/Number of entries:/ {print $4; exit}' || echo 0
-}
-
-get_packets_count() {
-    command -v iptables >/dev/null 2>&1 || { echo 0; return; }
-    iptables -vnL SCANNERS-BLOCK 2>/dev/null | awk '/LOG/ {sum += $1} END {print sum+0}' || echo 0
-}
+# ---------------- INSTALL ----------------
 
 install_process() {
     clear
     echo -e "${CYAN}🚀 УСТАНОВКА TRAFFICGUARD PRO${NC}"
-    apt-get update -qq
-    apt-get install -y curl wget rsyslog ipset ufw grep sed coreutils whois
 
-    systemctl enable --now rsyslog >/dev/null 2>&1
+    apt-get update
+    apt-get install -y curl wget rsyslog ipset ufw grep sed coreutils whois
+    systemctl enable --now rsyslog
 
     if command -v curl >/dev/null; then
         curl -fsSL "$TG_URL" | bash
@@ -42,32 +42,24 @@ install_process() {
         wget -qO- "$TG_URL" | bash
     fi
 
-    traffic-guard full -u "$LIST_GOV" -u "$LIST_SCAN" --enable-logging || true
+    traffic-guard full -u "$LIST_GOV" -u "$LIST_SCAN" --enable-logging
 
-    touch "$MANUAL_FILE" "$EXCLUDE_FILE"
-    apply_whitelist
+    touch "$MANUAL_FILE"
+    touch "$EXCLUDE_FILE"
 
     echo -e "${GREEN}✅ Установка завершена!${NC}"
     sleep 2
 }
 
-apply_whitelist() {
-    [ ! -s "$EXCLUDE_FILE" ] && return
-    echo -e "${CYAN}Применяем whitelist...${NC}"
-    while read -r subnet || [ -n "$subnet" ]; do
-        [[ -z "$subnet" ]] && continue
-        ipset del SCANNERS-BLOCK-V4 "$subnet" 2>/dev/null || true
-        ipset del SCANNERS-BLOCK-V6 "$subnet" 2>/dev/null || true
-    done < "$EXCLUDE_FILE"
-}
+# ---------------- UNINSTALL ----------------
 
 uninstall_process() {
     echo -e "\n${RED}=== УДАЛЕНИЕ TRAFFICGUARD ===${NC}"
     read -p "Вы уверены? (y/N): " confirm < /dev/tty
-    [[ "$confirm" != "y" && "$confirm" != "Y" ]] && return
+    [[ "$confirm" != "y" ]] && return
 
-    systemctl stop antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null || true
-    systemctl disable antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null || true
+    systemctl stop antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null
+    systemctl disable antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null
 
     rm -f /usr/local/bin/traffic-guard
     rm -f /usr/local/bin/antiscan-aggregate-logs.sh
@@ -92,123 +84,116 @@ uninstall_process() {
     exit 0
 }
 
+# ---------------- WHITELIST ----------------
+
 manage_whitelist() {
     touch "$EXCLUDE_FILE"
+
     while true; do
         clear
         echo -e "${YELLOW}=== 🤍 БЕЛЫЕ СЕТИ (Whitelist) ===${NC}"
         echo -e " ${GREEN}1.${NC} ➕ Добавить подсеть"
         echo -e " ${RED}2.${NC} ➖ Удалить подсеть"
         echo -e " ${CYAN}3.${NC} 📄 Показать список"
-        echo -e " ${CYAN}0.${NC} ↩️ Назад"
+        echo -e " ${CYAN}0.${NC} ↩️  Назад"
         echo ""
-
         read -p "👉 Действие: " action < /dev/tty
 
         case $action in
             1)
-                read -p "Подсеть (пример: 1.2.3.0/24 или 2a00::/32): " subnet < /dev/tty
+                read -p "Подсеть (пример 1.2.3.0/24): " subnet < /dev/tty
                 [[ -z "$subnet" ]] && continue
-                if grep -Fxq "$subnet" "$EXCLUDE_FILE"; then
-                    echo -e "${YELLOW}Уже в whitelist${NC}"
-                else
-                    echo "$subnet" >> "$EXCLUDE_FILE"
-                    ipset del SCANNERS-BLOCK-V4 "$subnet" 2>/dev/null || true
-                    ipset del SCANNERS-BLOCK-V6 "$subnet" 2>/dev/null || true
-                    echo -e "${GREEN}✅ Добавлено в whitelist${NC}"
-                fi
+                grep -Fxq "$subnet" "$EXCLUDE_FILE" || echo "$subnet" >> "$EXCLUDE_FILE"
+                ipset del SCANNERS-BLOCK-V4 "$subnet" 2>/dev/null
+                ipset del SCANNERS-BLOCK-V6 "$subnet" 2>/dev/null
+                echo -e "${GREEN}✅ Добавлено.${NC}"
                 read -p "[Enter]..." < /dev/tty
                 ;;
-
             2)
                 mapfile -t NETS < "$EXCLUDE_FILE"
-                if [ ${#NETS[@]} -eq 0 ]; then
-                    echo -e "${RED}Whitelist пуст${NC}"
-                    read -p "[Enter]..." < /dev/tty
-                    continue
-                fi
-                for i in "${!NETS[@]}"; do
-                    printf "%2d) %s\n" $((i+1)) "${NETS[i]}"
+                i=1
+                for net in "${NETS[@]}"; do
+                    echo "$i) $net"
+                    ((i++))
                 done
-                read -p "Номер для удаления: " num < /dev/tty
-                if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#NETS[@]}" ]; then
-                    TARGET="${NETS[$((num-1))]}"
-                    grep -vFx -- "$TARGET" "$EXCLUDE_FILE" > "${EXCLUDE_FILE}.tmp" && mv "${EXCLUDE_FILE}.tmp" "$EXCLUDE_FILE"
-                    if [[ "$TARGET" == *:* ]]; then
-                        ipset add SCANNERS-BLOCK-V6 "$TARGET" 2>/dev/null || true
-                    else
-                        ipset add SCANNERS-BLOCK-V4 "$TARGET" 2>/dev/null || true
-                    fi
-                    echo -e "${GREEN}✅ $TARGET удалён из whitelist и возвращён в блок${NC}"
-                else
-                    echo -e "${RED}Неверный номер${NC}"
-                fi
+                read -p "Номер: " num < /dev/tty
+                INDEX=$((num-1))
+                TARGET="${NETS[$INDEX]}"
+                sed -i "/^$TARGET$/d" "$EXCLUDE_FILE"
+                echo -e "${GREEN}Удалено.${NC}"
                 read -p "[Enter]..." < /dev/tty
                 ;;
-
             3)
-                if [ -s "$EXCLUDE_FILE" ]; then
-                    cat -n "$EXCLUDE_FILE"
-                else
-                    echo -e "${YELLOW}Whitelist пуст${NC}"
-                fi
+                cat "$EXCLUDE_FILE"
                 read -p "[Enter]..." < /dev/tty
                 ;;
             0) return ;;
-            *) echo -e "${RED}Неверный выбор${NC}"; read -p "[Enter]..." < /dev/tty ;;
         esac
     done
 }
 
+# ---------------- UPDATE ----------------
+
 update_lists() {
     echo -e "\n${CYAN}🔄 Обновление списков...${NC}"
-    traffic-guard full -u "$LIST_GOV" -u "$LIST_SCAN" --enable-logging || true
-    apply_whitelist
+    traffic-guard full -u "$LIST_GOV" -u "$LIST_SCAN" --enable-logging
+
+    if [ -f "$EXCLUDE_FILE" ]; then
+        while read -r subnet; do
+            ipset del SCANNERS-BLOCK-V4 "$subnet" 2>/dev/null
+            ipset del SCANNERS-BLOCK-V6 "$subnet" 2>/dev/null
+        done < "$EXCLUDE_FILE"
+    fi
+
     echo -e "${GREEN}✅ Готово!${NC}"
     sleep 2
 }
 
+# ---------------- LOGS ----------------
+
 view_log() {
     clear
     echo -e "${YELLOW}=== LIVE LOG (Ctrl+C для выхода) ===${NC}"
-    echo -e "${CYAN}Файл: $1${NC}"
-    tail -f "$1" 2>/dev/null || echo -e "${RED}Лог-файл ещё не создан${NC}"
+    tail -f "$1"
 }
 
+# ---------------- MENU ----------------
+
 show_menu() {
-    echo -e "${CYAN}DEBUG: Входим в главное меню${NC}"
     trap 'exit 0' INT
     while true; do
         clear
 
-        IPSET_CNT=$(get_ipset_count)
-        PKTS_CNT=$(get_packets_count)
+        IPSET_CNT=$(ipset list SCANNERS-BLOCK-V4 2>/dev/null | grep "Number of entries" | awk '{print $4}')
+        [[ -z "$IPSET_CNT" ]] && IPSET_CNT="0"
+
+        PKTS_CNT=$(iptables -vnL SCANNERS-BLOCK 2>/dev/null | grep "LOG" | awk '{print $1}')
+        [[ -z "$PKTS_CNT" ]] && PKTS_CNT="0"
 
         printf "${CYAN}╔══════════════════════════════════════════════════════╗${NC}\n"
-        printf "${CYAN}║ 🛡️  TRAFFICGUARD PRO MANAGER v16.4                  ║${NC}\n"
+        printf "${CYAN}║           🛡️  TRAFFICGUARD PRO MANAGER              ║${NC}\n"
         printf "${CYAN}╠══════════════════════════════════════════════════════╣${NC}\n"
-        printf "║ 📊 Заблокировано подсетей : ${GREEN}%-28s${NC}║\n" "$IPSET_CNT"
-        printf "║ 🔥 Атак отбито            : ${RED}%-28s${NC}║\n" "$PKTS_CNT"
+        printf "║  📊 Подсетей:       ${GREEN}%-36s${NC}║\n" "$IPSET_CNT"
+        printf "║  🔥 Атак отбито:    ${RED}%-36s${NC}║\n" "$PKTS_CNT"
         printf "${CYAN}╚══════════════════════════════════════════════════════╝${NC}\n"
-        echo ""
 
-        echo -e " ${GREEN}1.${NC} 📈 Топ атак (последние 20)"
+        echo ""
+        echo -e " ${GREEN}1.${NC} 📈 Топ атак (CSV)"
         echo -e " ${GREEN}2.${NC} 🕵 Логи IPv4 (Live)"
         echo -e " ${GREEN}3.${NC} 🕵 Логи IPv6 (Live)"
         echo -e " ${GREEN}4.${NC} 🔄 Обновить списки"
         echo -e " ${GREEN}5.${NC} 🛠️  Переустановить"
-        echo -e " ${GREEN}8.${NC} 🤍 Управление whitelist"
-        echo -e " ${RED}7.${NC} 🗑️  Полностью удалить"
+        echo -e " ${GREEN}8.${NC} 🤍 Белые сети"
+        echo -e " ${RED}7.${NC} 🗑️  Удалить"
         echo -e " ${RED}0.${NC} ❌ Выход"
         echo ""
-
         read -p "👉 Ваш выбор: " choice < /dev/tty
 
         case $choice in
-            1)
-                echo -e "\n${GREEN}ТОП 20 атак:${NC}"
+            1) 
+                echo -e "\n${GREEN}ТОП 20:${NC}"
                 [ -f /var/log/iptables-scanners-aggregate.csv ] && tail -20 /var/log/iptables-scanners-aggregate.csv || echo "Нет данных"
-                read -p $'\n[Enter] для продолжения...' < /dev/tty
+                read -p $'\n[Enter] назад...' < /dev/tty
                 ;;
             2) view_log "/var/log/iptables-scanners-ipv4.log" ;;
             3) view_log "/var/log/iptables-scanners-ipv6.log" ;;
@@ -217,18 +202,26 @@ show_menu() {
             7) uninstall_process ;;
             8) manage_whitelist ;;
             0) exit 0 ;;
-            *) echo -e "${RED}Неверный выбор${NC}"; sleep 1 ;;
         esac
     done
 }
 
-# ================== MAIN ==================
+
 check_root
-echo -e "${GREEN}DEBUG: check_root пройден, запускаем меню...${NC}"
 
 case "${1:-}" in
-    install)   install_process ;;
-    update)    update_lists ;;
+    install) install_process ;;
+    update) update_lists ;;
     uninstall) uninstall_process ;;
-    *)         show_menu ;;
+    *) show_menu ;;
 esac
+EOF
+
+chmod +x "$MANAGER_PATH"
+ln -s "$MANAGER_PATH" "$LINK_PATH"
+
+if [[ ! -f /usr/local/bin/traffic-guard ]]; then
+    /opt/trafficguard-manager.sh install
+fi
+
+/opt/trafficguard-manager.sh monitor
