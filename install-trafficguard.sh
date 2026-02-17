@@ -232,7 +232,7 @@ show_menu() {
         echo -e " ${GREEN}2.${NC} 🕵 Логи IPv4 (Live)"
         echo -e " ${GREEN}3.${NC} 🕵 Логи IPv6 (Live)"
         echo -e " ${GREEN}4.${NC} 🧪 Управление IP (Ban/Unban)"
-        echo -e " ${YELLOW}5. 🏳️ Белый список (Whitelist)${NC}" 
+        echo -e " ${GREEN}4.${NC} 🏳️ Белый список (Whitelist)" 
         echo -e " ${GREEN}6.${NC} 🔄 Обновить списки (Update)"
         echo -e " ${GREEN}7.${NC} 🛠️  Переустановить (Reinstall)"
         echo -e " ${RED}8.${NC} 🗑️  Удалить (Uninstall)"
