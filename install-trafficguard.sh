@@ -54,35 +54,68 @@ install_process() {
 # ---------------- UNINSTALL ----------------
 
 uninstall_process() {
-    echo -e "\n${RED}=== УДАЛЕНИЕ TRAFFICGUARD ===${NC}"
-    read -p "Вы уверены? (y/N): " confirm < /dev/tty
-    [[ "$confirm" != "y" ]] && return
+    clear
+    echo -e "${RED}⚠ Полное удаление TrafficGuard (Debian + UFW)...${NC}"
+    sleep 1
 
-    systemctl stop antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null
-    systemctl disable antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null
+    echo -e "${YELLOW}▶ Остановка UFW...${NC}"
+    ufw --force disable 2>/dev/null
 
-    rm -f /usr/local/bin/traffic-guard
-    rm -f /usr/local/bin/antiscan-aggregate-logs.sh
-    rm -f /etc/systemd/system/antiscan-* 
-    rm -f /etc/rsyslog.d/10-iptables-scanners.conf
-    rm -f /etc/logrotate.d/iptables-scanners
+    echo -e "${YELLOW}▶ Удаление iptables правил...${NC}"
 
-    rm -f /usr/local/bin/rknpidor
-    rm -f /opt/trafficguard-manager.sh
-    rm -f "$MANUAL_FILE" "$EXCLUDE_FILE"
+    # Удаляем DROP правило
+    iptables -D INPUT -m set --match-set SCANNERS-BLOCK-V4 src -j DROP 2>/dev/null
+    ip6tables -D INPUT -m set --match-set SCANNERS-BLOCK-V6 src -j DROP 2>/dev/null
 
-    iptables -D INPUT -j SCANNERS-BLOCK 2>/dev/null
+    # Удаляем chain
     iptables -F SCANNERS-BLOCK 2>/dev/null
     iptables -X SCANNERS-BLOCK 2>/dev/null
 
+    ip6tables -F SCANNERS-BLOCK-V6 2>/dev/null
+    ip6tables -X SCANNERS-BLOCK-V6 2>/dev/null
+
+    echo -e "${YELLOW}▶ Удаление ipset...${NC}"
+
     ipset flush SCANNERS-BLOCK-V4 2>/dev/null
     ipset destroy SCANNERS-BLOCK-V4 2>/dev/null
+
     ipset flush SCANNERS-BLOCK-V6 2>/dev/null
     ipset destroy SCANNERS-BLOCK-V6 2>/dev/null
 
-    echo -e "${GREEN}✅ Полностью удалено.${NC}"
-    exit 0
+    echo -e "${YELLOW}▶ Очистка конфигов UFW...${NC}"
+
+    # Удаляем все строки где упоминается SCANNERS-BLOCK
+    sed -i '/SCANNERS-BLOCK/d' /etc/ufw/before.rules 2>/dev/null
+    sed -i '/SCANNERS-BLOCK/d' /etc/ufw/after.rules 2>/dev/null
+    sed -i '/SCANNERS-BLOCK/d' /etc/ufw/user.rules 2>/dev/null
+
+    # Если ipset restore был добавлен
+    sed -i '/ipset restore/d' /etc/ufw/before.rules 2>/dev/null
+
+    echo -e "${YELLOW}▶ Удаление systemd сервиса...${NC}"
+
+    systemctl stop trafficguard 2>/dev/null
+    systemctl disable trafficguard 2>/dev/null
+    rm -f /etc/systemd/system/trafficguard.service
+    systemctl daemon-reload
+
+    echo -e "${YELLOW}▶ Удаление файлов...${NC}"
+
+    rm -f /usr/local/bin/trafficguard.sh
+    rm -f /opt/trafficguard-exclude.list
+    rm -f /var/log/iptables-scanners-ipv4.log
+    rm -f /var/log/iptables-scanners-ipv6.log
+    rm -f /var/log/iptables-scanners-aggregate.csv
+
+    echo -e "${YELLOW}▶ Перезапуск UFW...${NC}"
+    ufw --force enable
+    ufw reload
+
+    echo ""
+    echo -e "${GREEN}✔ TrafficGuard полностью удалён.${NC}"
+    sleep 2
 }
+
 
 # ---------------- WHITELIST ----------------
 
