@@ -1,260 +1,198 @@
 #!/bin/bash
-# 🔥 TrafficGuard PRO INSTALLER v16.0 (Whitelist Edition)
+# 🔥 TrafficGuard PRO INSTALLER v18.0 (Debian + Original Style + Smart Uninstall)
 
 MANAGER_PATH="/opt/trafficguard-manager.sh"
 LINK_PATH="/usr/local/bin/rknpidor"
 MANUAL_FILE="/opt/trafficguard-manual.list"
-EXCLUDE_FILE="/opt/trafficguard-exclude.list"
+WHITE_LIST="/opt/trafficguard-whitelist.list"
+CONFIG_FILE="/etc/trafficguard.conf"
 
-rm -f "$MANAGER_PATH" "$LINK_PATH"
-
+# 1. ЗАПИСЬ МЕНЕДЖЕРА
 cat > "$MANAGER_PATH" << 'EOF'
 #!/bin/bash
 set -u
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
+# --- ЦВЕТА ---
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
 
 TG_URL="https://raw.githubusercontent.com/dotX12/traffic-guard/master/install.sh"
 LIST_GOV="https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/refs/heads/main/public/government_networks.list"
 LIST_SCAN="https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/refs/heads/main/public/antiscanner.list"
-
 MANUAL_FILE="/opt/trafficguard-manual.list"
-EXCLUDE_FILE="/opt/trafficguard-exclude.list"
+WHITE_LIST="/opt/trafficguard-whitelist.list"
+CONFIG_FILE="/etc/trafficguard.conf"
 
 check_root() {
     [[ $EUID -ne 0 ]] && { echo -e "${RED}Запуск только от root!${NC}"; exit 1; }
 }
 
-# ---------------- INSTALL ----------------
-
-install_process() {
-    clear
-    echo -e "${CYAN}🚀 УСТАНОВКА TRAFFICGUARD PRO${NC}"
-
-    apt-get update
-    apt-get install -y curl wget rsyslog ipset ufw grep sed coreutils whois
-    systemctl enable --now rsyslog
-
-    if command -v curl >/dev/null; then
-        curl -fsSL "$TG_URL" | bash
-    else
-        wget -qO- "$TG_URL" | bash
+check_firewall_safety() {
+    echo -e "${BLUE}[CHECK] Проверка конфигурации Firewall...${NC}"
+    if command -v ufw >/dev/null; then
+        UFW_STATUS=$(ufw status | grep "Status" | awk '{print $2}')
+        if [[ "$UFW_STATUS" == "inactive" ]]; then
+            UFW_RULES=$(ufw show added 2>/dev/null)
+            if [[ "$UFW_RULES" != *"22"* ]] && [[ "$UFW_RULES" != *"SSH"* ]]; then
+                echo -e "\n${RED}⛔ АВАРИЙНАЯ ОСТАНОВКА!${NC}"
+                echo -e "${YELLOW}UFW выключен и нет правил SSH. Сначала сделайте: ufw allow ssh${NC}"
+                exit 1
+            fi
+        fi
     fi
-
-    traffic-guard full -u "$LIST_GOV" -u "$LIST_SCAN" --enable-logging
-
-    touch "$MANUAL_FILE"
-    touch "$EXCLUDE_FILE"
-
-    echo -e "${GREEN}✅ Установка завершена!${NC}"
-    sleep 2
 }
 
-# ---------------- UNINSTALL ----------------
+# --- БЕЛЫЙ СПИСОК ---
+apply_whitelist() {
+    touch "$WHITE_LIST"
+    ipset create WHITE-LIST-V4 hash:net family inet hashsize 1024 maxelem 65536 2>/dev/null
+    ipset flush WHITE-LIST-V4
+    while read -r line; do
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        ipset add WHITE-LIST-V4 "$line" 2>/dev/null
+    done < "$WHITE_LIST"
 
-uninstall_process() {
-    clear
-    echo -e "${RED}⚠ Полное удаление TrafficGuard (Debian + UFW)...${NC}"
-    sleep 1
-
-    echo -e "${YELLOW}▶ Остановка UFW...${NC}"
-    ufw --force disable 2>/dev/null
-
-    echo -e "${YELLOW}▶ Удаление iptables правил...${NC}"
-
-    # Удаляем DROP правило
-    iptables -D INPUT -m set --match-set SCANNERS-BLOCK-V4 src -j DROP 2>/dev/null
-    ip6tables -D INPUT -m set --match-set SCANNERS-BLOCK-V6 src -j DROP 2>/dev/null
-
-    # Удаляем chain
-    iptables -F SCANNERS-BLOCK 2>/dev/null
-    iptables -X SCANNERS-BLOCK 2>/dev/null
-
-    ip6tables -F SCANNERS-BLOCK-V6 2>/dev/null
-    ip6tables -X SCANNERS-BLOCK-V6 2>/dev/null
-
-    echo -e "${YELLOW}▶ Удаление ipset...${NC}"
-
-    ipset flush SCANNERS-BLOCK-V4 2>/dev/null
-    ipset destroy SCANNERS-BLOCK-V4 2>/dev/null
-
-    ipset flush SCANNERS-BLOCK-V6 2>/dev/null
-    ipset destroy SCANNERS-BLOCK-V6 2>/dev/null
-
-    echo -e "${YELLOW}▶ Очистка конфигов UFW...${NC}"
-
-    # Удаляем все строки где упоминается SCANNERS-BLOCK
-    sed -i '/SCANNERS-BLOCK/d' /etc/ufw/before.rules 2>/dev/null
-    sed -i '/SCANNERS-BLOCK/d' /etc/ufw/after.rules 2>/dev/null
-    sed -i '/SCANNERS-BLOCK/d' /etc/ufw/user.rules 2>/dev/null
-
-    # Если ipset restore был добавлен
-    sed -i '/ipset restore/d' /etc/ufw/before.rules 2>/dev/null
-
-    echo -e "${YELLOW}▶ Удаление systemd сервиса...${NC}"
-
-    systemctl stop trafficguard 2>/dev/null
-    systemctl disable trafficguard 2>/dev/null
-    rm -f /etc/systemd/system/trafficguard.service
-    systemctl daemon-reload
-
-    echo -e "${YELLOW}▶ Удаление файлов...${NC}"
-
-    rm -f /usr/local/bin/trafficguard.sh
-    rm -f /opt/trafficguard-exclude.list
-    rm -f /var/log/iptables-scanners-ipv4.log
-    rm -f /var/log/iptables-scanners-ipv6.log
-    rm -f /var/log/iptables-scanners-aggregate.csv
-
-    echo -e "${YELLOW}▶ Перезапуск UFW...${NC}"
-    ufw --force enable
-    ufw reload
-
-    echo ""
-    echo -e "${GREEN}✔ TrafficGuard полностью удалён.${NC}"
-    sleep 2
+    if ! iptables -C INPUT -m set --match-set WHITE-LIST-V4 src -j ACCEPT 2>/dev/null; then
+        iptables -I INPUT 1 -m set --match-set WHITE-LIST-V4 src -j ACCEPT
+    fi
 }
-
-
-# ---------------- WHITELIST ----------------
 
 manage_whitelist() {
-    touch "$EXCLUDE_FILE"
-
     while true; do
         clear
-        echo -e "${YELLOW}=== 🤍 БЕЛЫЕ СЕТИ (Whitelist) ===${NC}"
-        echo -e " ${GREEN}1.${NC} ➕ Добавить подсеть"
-        echo -e " ${RED}2.${NC} ➖ Удалить подсеть"
-        echo -e " ${CYAN}3.${NC} 📄 Показать список"
-        echo -e " ${CYAN}0.${NC} ↩️  Назад"
-        echo ""
-        read -p "👉 Действие: " action < /dev/tty
-
-        case $action in
-            1)
-                read -p "Подсеть (пример 1.2.3.0/24): " subnet < /dev/tty
-                [[ -z "$subnet" ]] && continue
-                grep -Fxq "$subnet" "$EXCLUDE_FILE" || echo "$subnet" >> "$EXCLUDE_FILE"
-                ipset del SCANNERS-BLOCK-V4 "$subnet" 2>/dev/null
-                ipset del SCANNERS-BLOCK-V6 "$subnet" 2>/dev/null
-                echo -e "${GREEN}✅ Добавлено.${NC}"
-                read -p "[Enter]..." < /dev/tty
-                ;;
-            2)
-                mapfile -t NETS < "$EXCLUDE_FILE"
-                i=1
-                for net in "${NETS[@]}"; do
-                    echo "$i) $net"
-                    ((i++))
-                done
-                read -p "Номер: " num < /dev/tty
-                INDEX=$((num-1))
-                TARGET="${NETS[$INDEX]}"
-                sed -i "/^$TARGET$/d" "$EXCLUDE_FILE"
-                echo -e "${GREEN}Удалено.${NC}"
-                read -p "[Enter]..." < /dev/tty
-                ;;
-            3)
-                cat "$EXCLUDE_FILE"
-                read -p "[Enter]..." < /dev/tty
-                ;;
+        echo -e "${CYAN}🏳️ УПРАВЛЕНИЕ БЕЛЫМ СПИСКОМ (Исключения)${NC}"
+        echo -e "1) Добавить IP/подсеть"
+        echo -e "2) Показать список"
+        echo -e "3) Удалить из списка"
+        echo -e "0) Назад"
+        read -p ">> " wl_choice
+        case $wl_choice in
+            1) read -p "IP/CIDR: " wl_ip; [[ -n "$wl_ip" ]] && echo "$wl_ip" >> "$WHITE_LIST"; apply_whitelist ;;
+            2) cat "$WHITE_LIST"; read -p "[Enter]" ;;
+            3) read -p "Удалить IP/CIDR: " wl_del; sed -i "\|^$wl_del$|d" "$WHITE_LIST"; apply_whitelist ;;
             0) return ;;
         esac
     done
 }
 
-# ---------------- UPDATE ----------------
+# --- УДАЛЕНИЕ ---
+uninstall_process() {
+    clear
+    echo -e "${RED}⚠ Полное удаление TrafficGuard...${NC}"
+    
+    # Запоминаем статус UFW перед действиями
+    UFW_WAS_ACTIVE=$(ufw status | grep -q "active" && echo "yes" || echo "no")
 
-update_lists() {
-    echo -e "\n${CYAN}🔄 Обновление списков...${NC}"
-    traffic-guard full -u "$LIST_GOV" -u "$LIST_SCAN" --enable-logging
+    echo -e "${YELLOW}▶ Остановка сервисов...${NC}"
+    ufw --force disable 2>/dev/null
+    systemctl stop antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null
+    systemctl disable antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null
 
-    if [ -f "$EXCLUDE_FILE" ]; then
-        while read -r subnet; do
-            ipset del SCANNERS-BLOCK-V4 "$subnet" 2>/dev/null
-            ipset del SCANNERS-BLOCK-V6 "$subnet" 2>/dev/null
-        done < "$EXCLUDE_FILE"
+    echo -e "${YELLOW}▶ Чистка iptables и ipset...${NC}"
+    iptables -D INPUT -m set --match-set WHITE-LIST-V4 src -j ACCEPT 2>/dev/null
+    iptables -D INPUT -j SCANNERS-BLOCK 2>/dev/null
+    iptables -F SCANNERS-BLOCK 2>/dev/null
+    iptables -X SCANNERS-BLOCK 2>/dev/null
+    
+    ipset destroy SCANNERS-BLOCK-V4 2>/dev/null
+    ipset destroy SCANNERS-BLOCK-V6 2>/dev/null
+    ipset destroy WHITE-LIST-V4 2>/dev/null
+
+    echo -e "${YELLOW}▶ Чистка конфигов UFW...${NC}"
+    sed -i '/SCANNERS-BLOCK/d' /etc/ufw/before.rules /etc/ufw/after.rules /etc/ufw/user.rules 2>/dev/null
+    sed -i '/WHITE-LIST/d' /etc/ufw/before.rules 2>/dev/null
+
+    echo -e "${YELLOW}▶ Удаление файлов...${NC}"
+    rm -f /usr/local/bin/traffic-guard /usr/local/bin/rknpidor "$MANAGER_PATH" "$CONFIG_FILE" "$MANUAL_FILE" "$WHITE_LIST"
+    rm -f /etc/systemd/system/antiscan-* /var/log/iptables-scanners-*
+
+    if [[ "$UFW_WAS_ACTIVE" == "yes" ]]; then
+        echo -e "${YELLOW}▶ Возврат UFW в активное состояние...${NC}"
+        ufw --force enable 2>/dev/null
+        ufw reload 2>/dev/null
     fi
 
-    echo -e "${GREEN}✅ Готово!${NC}"
-    sleep 2
+    echo -e "${GREEN}✔ Удаление завершено.${NC}"
+    exit 0
 }
 
-# ---------------- LOGS ----------------
-
-view_log() {
+install_process() {
     clear
-    echo -e "${YELLOW}=== LIVE LOG (Ctrl+C для выхода) ===${NC}"
-    tail -f "$1"
-}
+    echo -e "${CYAN}🚀 УСТАНОВКА TRAFFICGUARD PRO${NC}"
+    check_firewall_safety
 
-# ---------------- MENU ----------------
+    echo -e "\n${YELLOW}Выберите списки:${NC}"
+    echo "1) LIST_GOV (Гос. сети)"
+    echo "2) LIST_SCAN (Антисканнеры)"
+    echo "3) ВСЕ ВМЕСТЕ"
+    read -p "Выбор: " c
+    case $c in
+        1) echo "URLS=\"-u $LIST_GOV\"" > "$CONFIG_FILE" ;;
+        2) echo "URLS=\"-u $LIST_SCAN\"" > "$CONFIG_FILE" ;;
+        *) echo "URLS=\"-u $LIST_GOV -u $LIST_SCAN\"" > "$CONFIG_FILE" ;;
+    esac
+
+    apt-get update && apt-get install -y curl ipset ufw rsyslog
+    curl -fsSL "$TG_URL" | bash
+    
+    source "$CONFIG_FILE"
+    traffic-guard full $URLS --enable-logging
+    apply_whitelist
+    echo -e "${GREEN}✅ Готово!${NC}"; sleep 2
+}
 
 show_menu() {
-    trap 'exit 0' INT
     while true; do
         clear
-
+        apply_whitelist 2>/dev/null
+        # Считаем подсети
         IPSET_CNT=$(ipset list SCANNERS-BLOCK-V4 2>/dev/null | grep "Number of entries" | awk '{print $4}')
         [[ -z "$IPSET_CNT" ]] && IPSET_CNT="0"
+        # Считаем пакеты (атаки)
+        PKTS_CNT=$(iptables -vnL SCANNERS-BLOCK 2>/dev/null | awk 'END{print $1}')
+        [[ -z "$PKTS_CNT" || "$PKTS_CNT" == "pkts" ]] && PKTS_CNT="0"
 
-        PKTS_CNT=$(iptables -vnL SCANNERS-BLOCK 2>/dev/null | grep "LOG" | awk '{print $1}')
-        [[ -z "$PKTS_CNT" ]] && PKTS_CNT="0"
-
-        printf "${CYAN}╔══════════════════════════════════════════════════════╗${NC}\n"
-        printf "${CYAN}║           🛡️  TRAFFICGUARD PRO MANAGER              ║${NC}\n"
-        printf "${CYAN}╠══════════════════════════════════════════════════════╣${NC}\n"
-        printf "║  📊 Подсетей:       ${GREEN}%-36s${NC}║\n" "$IPSET_CNT"
-        printf "║  🔥 Атак отбито:    ${RED}%-36s${NC}║\n" "$PKTS_CNT"
-        printf "${CYAN}╚══════════════════════════════════════════════════════╝${NC}\n"
-
+        echo -e "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║           🛡️  TRAFFICGUARD PRO MANAGER              ║${NC}"
+        echo -e "${CYAN}╠══════════════════════════════════════════════════════╣${NC}"
+        echo -e "║  📊 Подсетей:       ${GREEN}${IPSET_CNT}${NC}                             "
+        echo -e "║  🔥 Атак отбито:    ${RED}${PKTS_CNT}${NC}                             "
+        echo -e "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
         echo ""
-        echo -e " ${GREEN}1.${NC} 📈 Топ атак (CSV)"
-        echo -e " ${GREEN}2.${NC} 🕵 Логи IPv4 (Live)"
-        echo -e " ${GREEN}3.${NC} 🕵 Логи IPv6 (Live)"
+        echo -e " ${GREEN}1.${NC} 🕵 Логи IPv4 (Live)"
+        echo -e " ${GREEN}2.${NC} 🧪 Управление IP (Ban/Unban)"
+        echo -e " ${YELLOW}3. 🏳️ Белый список (Whitelist)${NC}"
         echo -e " ${GREEN}4.${NC} 🔄 Обновить списки"
-        echo -e " ${GREEN}5.${NC} 🛠️  Переустановить"
-        echo -e " ${GREEN}8.${NC} 🤍 Белые сети"
-        echo -e " ${RED}7.${NC} 🗑️  Удалить"
+        echo -e " ${RED}5.${NC} 🗑️  Удалить (Uninstall)"
         echo -e " ${RED}0.${NC} ❌ Выход"
         echo ""
-        read -p "👉 Ваш выбор: " choice < /dev/tty
-
+        read -p "👉 Выбор: " choice
         case $choice in
-            1) 
-                echo -e "\n${GREEN}ТОП 20:${NC}"
-                [ -f /var/log/iptables-scanners-aggregate.csv ] && tail -20 /var/log/iptables-scanners-aggregate.csv || echo "Нет данных"
-                read -p $'\n[Enter] назад...' < /dev/tty
-                ;;
-            2) view_log "/var/log/iptables-scanners-ipv4.log" ;;
-            3) view_log "/var/log/iptables-scanners-ipv6.log" ;;
-            4) update_lists ;;
-            5) install_process ;;
-            7) uninstall_process ;;
-            8) manage_whitelist ;;
+            1) tail -f /var/log/iptables-scanners-ipv4.log ;;
+            2) 
+               read -p "Введите IP для бана: " r_ip
+               [[ -n "$r_ip" ]] && ipset add SCANNERS-BLOCK-V4 "$r_ip" && echo "$r_ip" >> "$MANUAL_FILE"
+               ;;
+            3) manage_whitelist ;;
+            4) source "$CONFIG_FILE"; traffic-guard full $URLS --enable-logging; apply_whitelist ;;
+            5) uninstall_process ;;
             0) exit 0 ;;
         esac
     done
 }
 
-
 check_root
-
 case "${1:-}" in
     install) install_process ;;
-    update) update_lists ;;
-    uninstall) uninstall_process ;;
-    *) show_menu ;;
+    *) show_menu ;; 
 esac
 EOF
 
+# 2. ПРАВА И ЗАПУСК
 chmod +x "$MANAGER_PATH"
-ln -s "$MANAGER_PATH" "$LINK_PATH"
+ln -sf "$MANAGER_PATH" "$LINK_PATH"
 
-if [[ ! -f /usr/local/bin/traffic-guard ]]; then
-    /opt/trafficguard-manager.sh install
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    $MANAGER_PATH install
+else
+    $MANAGER_PATH
 fi
-
-/opt/trafficguard-manager.sh monitor
