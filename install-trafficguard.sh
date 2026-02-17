@@ -160,16 +160,23 @@ view_log() {
 # ---------------- MENU ----------------
 
 show_menu() {
+    trap 'exit 0' INT
     while true; do
         clear
+
         IPSET_CNT=$(ipset list SCANNERS-BLOCK-V4 2>/dev/null | grep "Number of entries" | awk '{print $4}')
         [[ -z "$IPSET_CNT" ]] && IPSET_CNT="0"
 
-        echo -e "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
-        echo -e "${CYAN}║           🛡️  TRAFFICGUARD PRO MANAGER              ║${NC}"
-        echo -e "${CYAN}╠══════════════════════════════════════════════════════╣${NC}"
-        echo -e "║  📊 Подсетей:       ${GREEN}${IPSET_CNT}${NC}"
-        echo -e "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
+        PKTS_CNT=$(iptables -vnL SCANNERS-BLOCK 2>/dev/null | grep "LOG" | awk '{print $1}')
+        [[ -z "$PKTS_CNT" ]] && PKTS_CNT="0"
+
+        printf "${CYAN}╔══════════════════════════════════════════════════════╗${NC}\n"
+        printf "${CYAN}║           🛡️  TRAFFICGUARD PRO MANAGER               ║${NC}\n"
+        printf "${CYAN}╠══════════════════════════════════════════════════════╣${NC}\n"
+        printf "║  📊 Подсетей:       ${GREEN}%-36s${NC}║\n" "$IPSET_CNT"
+        printf "║  🔥 Атак отбито:    ${RED}%-36s${NC}║\n" "$PKTS_CNT"
+        printf "${CYAN}╚══════════════════════════════════════════════════════╝${NC}\n"
+
         echo ""
         echo -e " ${GREEN}1.${NC} 📈 Топ атак (CSV)"
         echo -e " ${GREEN}2.${NC} 🕵 Логи IPv4 (Live)"
@@ -183,7 +190,11 @@ show_menu() {
         read -p "👉 Ваш выбор: " choice < /dev/tty
 
         case $choice in
-            1) tail -20 /var/log/iptables-scanners-aggregate.csv; read -p "[Enter]" < /dev/tty ;;
+            1) 
+                echo -e "\n${GREEN}ТОП 20:${NC}"
+                [ -f /var/log/iptables-scanners-aggregate.csv ] && tail -20 /var/log/iptables-scanners-aggregate.csv || echo "Нет данных"
+                read -p $'\n[Enter] назад...' < /dev/tty
+                ;;
             2) view_log "/var/log/iptables-scanners-ipv4.log" ;;
             3) view_log "/var/log/iptables-scanners-ipv6.log" ;;
             4) update_lists ;;
