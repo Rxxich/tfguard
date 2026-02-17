@@ -1,6 +1,3 @@
-rm -f /usr/local/bin/rknpidor /opt/trafficguard-manager.sh
-
-cat > /opt/trafficguard-manager.sh << 'FULLSCRIPT'
 #!/bin/bash
 set -euo pipefail
 
@@ -225,12 +222,3 @@ case "${1:-}" in
     uninstall) uninstall_process ;;
     *)         show_menu ;;
 esac
-FULLSCRIPT
-
-chmod +x /opt/trafficguard-manager.sh
-ln -sf /opt/trafficguard-manager.sh /usr/local/bin/rknpidor
-
-echo -e "${GREEN}✅ v16.3 установлен БЕЗ ОШИБОК!${NC}"
-echo -e "Теперь просто введи: ${CYAN}rknpidor${NC}"
-
-exec /usr/local/bin/rknpidor
