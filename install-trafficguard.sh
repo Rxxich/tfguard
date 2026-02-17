@@ -1,7 +1,8 @@
 rm -f /usr/local/bin/rknpidor /opt/trafficguard-manager.sh
 
-cat > /opt/trafficguard-manager.sh << 'EOF'
+cat > /opt/trafficguard-manager.sh << 'FULLSCRIPT'
 #!/bin/bash
+set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -12,6 +13,8 @@ LIST_SCAN="https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/r
 
 MANUAL_FILE="/opt/trafficguard-manual.list"
 EXCLUDE_FILE="/opt/trafficguard-exclude.list"
+LINK_PATH="/usr/local/bin/rknpidor"
+MANAGER_PATH="/opt/trafficguard-manager.sh"
 
 check_root() {
     [[ $EUID -ne 0 ]] && { echo -e "${RED}Запуск только от root!${NC}"; exit 1; }
@@ -216,21 +219,18 @@ show_menu() {
 # ================== MAIN ==================
 check_root
 
-LINK_PATH="/usr/local/bin/rknpidor"   # определено здесь для uninstall
-MANAGER_PATH="/opt/trafficguard-manager.sh"
-
 case "${1:-}" in
     install)   install_process ;;
     update)    update_lists ;;
     uninstall) uninstall_process ;;
     *)         show_menu ;;
 esac
-EOF
+FULLSCRIPT
 
 chmod +x /opt/trafficguard-manager.sh
 ln -sf /opt/trafficguard-manager.sh /usr/local/bin/rknpidor
 
-echo -e "${GREEN}✅ TrafficGuard PRO Manager v16.3 установлен без ошибок!${NC}"
-echo -e "Запуск: ${CYAN}rknpidor${NC}"
+echo -e "${GREEN}✅ v16.3 установлен БЕЗ ОШИБОК!${NC}"
+echo -e "Теперь просто введи: ${CYAN}rknpidor${NC}"
 
 exec /usr/local/bin/rknpidor
