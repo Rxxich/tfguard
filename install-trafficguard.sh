@@ -128,38 +128,49 @@ manage_test_ip() {
 
 uninstall_process() {
     clear
-    echo -e "${RED}⚠ УДАЛЕНИЕ TRAFFICGUARD...${NC}"
+    echo -e "${RED}⚠ Полное удаление TrafficGuard...${NC}"
     
-    # Отключаем UFW для очистки
+    # 1. Сначала отключаем UFW, чтобы спокойно вычистить правила
     ufw --force disable 2>/dev/null
     
     systemctl stop antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null
     systemctl disable antiscan-aggregate.timer antiscan-aggregate.service 2>/dev/null
 
+    echo -e "${YELLOW}▶ Чистка iptables и ipset...${NC}"
     iptables -D INPUT -m set --match-set WHITE-LIST-V4 src -j ACCEPT 2>/dev/null
     iptables -D INPUT -j SCANNERS-BLOCK 2>/dev/null
     iptables -F SCANNERS-BLOCK 2>/dev/null
     iptables -X SCANNERS-BLOCK 2>/dev/null
     
+    ip6tables -D INPUT -j SCANNERS-BLOCK-V6 2>/dev/null
+    ip6tables -F SCANNERS-BLOCK-V6 2>/dev/null
+    ip6tables -X SCANNERS-BLOCK-V6 2>/dev/null
+
     ipset destroy SCANNERS-BLOCK-V4 2>/dev/null
     ipset destroy SCANNERS-BLOCK-V6 2>/dev/null
     ipset destroy WHITE-LIST-V4 2>/dev/null
 
-    # Чистка конфигов UFW
+    echo -e "${YELLOW}▶ Чистка конфигов UFW...${NC}"
     sed -i '/SCANNERS-BLOCK/d' /etc/ufw/before.rules /etc/ufw/after.rules /etc/ufw/user.rules 2>/dev/null
     sed -i '/WHITE-LIST/d' /etc/ufw/before.rules 2>/dev/null
     sed -i '/ipset restore/d' /etc/ufw/before.rules 2>/dev/null
 
-    # Удаление файлов
-    rm -f /usr/local/bin/traffic-guard /usr/local/bin/rknpidor
-    rm -f "$MANAGER_PATH" "$CONFIG_FILE" "$MANUAL_FILE" "$WHITE_LIST"
-    rm -f /etc/systemd/system/antiscan-* /var/log/iptables-scanners-*
+    echo -e "${YELLOW}▶ Удаление файлов...${NC}"
+    # Удаляем ВСЕ файлы, чтобы следующая установка началась с нуля
+    rm -f /usr/local/bin/traffic-guard 
+    rm -f /usr/local/bin/rknpidor 
+    rm -f "/opt/trafficguard-manager.sh" 
+    rm -f "/etc/trafficguard.conf" 
+    rm -f "/opt/trafficguard-manual.list" 
+    rm -f "/opt/trafficguard-whitelist.list"
+    rm -f /etc/systemd/system/antiscan-* rm -f /var/log/iptables-scanners-*
 
-    echo -e "${YELLOW}▶ Включение UFW...${NC}"
+    echo -e "${YELLOW}▶ Принудительное включение UFW...${NC}"
+    # Включаем UFW обратно
     ufw --force enable
     ufw reload
-    
-    echo -e "${GREEN}✔ Готово. UFW работает.${NC}"
+
+    echo -e "${GREEN}✔ TrafficGuard удалён. UFW включен.${NC}"
     exit 0
 }
 
