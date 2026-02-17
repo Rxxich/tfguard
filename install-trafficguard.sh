@@ -1,14 +1,6 @@
-#!/bin/bash
-# 🔥 TrafficGuard PRO INSTALLER v16.3 (Whitelist Edition) — Полностью стабильная
+rm -f /usr/local/bin/rknpidor /opt/trafficguard-manager.sh
 
-MANAGER_PATH="/opt/trafficguard-manager.sh"
-LINK_PATH="/usr/local/bin/rknpidor"
-MANUAL_FILE="/opt/trafficguard-manual.list"
-EXCLUDE_FILE="/opt/trafficguard-exclude.list"
-
-rm -f "$MANAGER_PATH" "$LINK_PATH"
-
-cat > "$MANAGER_PATH" << 'EOF'
+cat > /opt/trafficguard-manager.sh << 'EOF'
 #!/bin/bash
 set -euo pipefail
 
@@ -26,7 +18,6 @@ check_root() {
     [[ $EUID -ne 0 ]] && { echo -e "${RED}Запуск только от root!${NC}"; exit 1; }
 }
 
-# Безопасный подсчёт статистики (не убивает скрипт)
 get_ipset_count() {
     command -v ipset >/dev/null 2>&1 || { echo 0; return; }
     ipset list SCANNERS-BLOCK-V4 2>/dev/null | awk '/Number of entries:/ {print $4; exit}' || echo 0
@@ -94,7 +85,73 @@ uninstall_process() {
     exit 0
 }
 
-manage_whitelist() { ... }  # (оставил ту же функцию, что в v16.2 — она уже хорошая)
+manage_whitelist() {
+    touch "$EXCLUDE_FILE"
+    while true; do
+        clear
+        echo -e "${YELLOW}=== 🤍 БЕЛЫЕ СЕТИ (Whitelist) ===${NC}"
+        echo -e " ${GREEN}1.${NC} ➕ Добавить подсеть"
+        echo -e " ${RED}2.${NC} ➖ Удалить подсеть"
+        echo -e " ${CYAN}3.${NC} 📄 Показать список"
+        echo -e " ${CYAN}0.${NC} ↩️ Назад"
+        echo ""
+
+        read -p "👉 Действие: " action < /dev/tty
+
+        case $action in
+            1)
+                read -p "Подсеть (пример: 1.2.3.0/24 или 2a00::/32): " subnet < /dev/tty
+                [[ -z "$subnet" ]] && continue
+                if grep -Fxq "$subnet" "$EXCLUDE_FILE"; then
+                    echo -e "${YELLOW}Уже в whitelist${NC}"
+                else
+                    echo "$subnet" >> "$EXCLUDE_FILE"
+                    ipset del SCANNERS-BLOCK-V4 "$subnet" 2>/dev/null || true
+                    ipset del SCANNERS-BLOCK-V6 "$subnet" 2>/dev/null || true
+                    echo -e "${GREEN}✅ Добавлено в whitelist${NC}"
+                fi
+                read -p "[Enter]..." < /dev/tty
+                ;;
+
+            2)
+                mapfile -t NETS < "$EXCLUDE_FILE"
+                if [ ${#NETS[@]} -eq 0 ]; then
+                    echo -e "${RED}Whitelist пуст${NC}"
+                    read -p "[Enter]..." < /dev/tty
+                    continue
+                fi
+                for i in "${!NETS[@]}"; do
+                    printf "%2d) %s\n" $((i+1)) "${NETS[i]}"
+                done
+                read -p "Номер для удаления: " num < /dev/tty
+                if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#NETS[@]}" ]; then
+                    TARGET="${NETS[$((num-1))]}"
+                    grep -vFx -- "$TARGET" "$EXCLUDE_FILE" > "${EXCLUDE_FILE}.tmp" && mv "${EXCLUDE_FILE}.tmp" "$EXCLUDE_FILE"
+                    if [[ "$TARGET" == *:* ]]; then
+                        ipset add SCANNERS-BLOCK-V6 "$TARGET" 2>/dev/null || true
+                    else
+                        ipset add SCANNERS-BLOCK-V4 "$TARGET" 2>/dev/null || true
+                    fi
+                    echo -e "${GREEN}✅ $TARGET удалён из whitelist и возвращён в блок${NC}"
+                else
+                    echo -e "${RED}Неверный номер${NC}"
+                fi
+                read -p "[Enter]..." < /dev/tty
+                ;;
+
+            3)
+                if [ -s "$EXCLUDE_FILE" ]; then
+                    cat -n "$EXCLUDE_FILE"
+                else
+                    echo -e "${YELLOW}Whitelist пуст${NC}"
+                fi
+                read -p "[Enter]..." < /dev/tty
+                ;;
+            0) return ;;
+            *) echo -e "${RED}Неверный выбор${NC}"; read -p "[Enter]..." < /dev/tty ;;
+        esac
+    done
+}
 
 update_lists() {
     echo -e "\n${CYAN}🔄 Обновление списков...${NC}"
@@ -159,6 +216,10 @@ show_menu() {
 
 # ================== MAIN ==================
 check_root
+
+LINK_PATH="/usr/local/bin/rknpidor"   # определено здесь для uninstall
+MANAGER_PATH="/opt/trafficguard-manager.sh"
+
 case "${1:-}" in
     install)   install_process ;;
     update)    update_lists ;;
@@ -167,12 +228,10 @@ case "${1:-}" in
 esac
 EOF
 
-# (полная функция manage_whitelist из предыдущей версии v16.2 — она уже идеальная, я её не менял)
+chmod +x /opt/trafficguard-manager.sh
+ln -sf /opt/trafficguard-manager.sh /usr/local/bin/rknpidor
 
-chmod +x "$MANAGER_PATH"
-ln -sf "$MANAGER_PATH" "$LINK_PATH"
+echo -e "${GREEN}✅ TrafficGuard PRO Manager v16.3 установлен без ошибок!${NC}"
+echo -e "Запуск: ${CYAN}rknpidor${NC}"
 
-echo -e "${GREEN}✅ TrafficGuard PRO Manager v16.3 установлен!${NC}"
-echo -e "Теперь просто выполни: ${CYAN}rknpidor${NC}"
-
-exec "$MANAGER_PATH"
+exec /usr/local/bin/rknpidor
